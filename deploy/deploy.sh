@@ -1,6 +1,6 @@
 #!/bin/sh
-# Usage: run this on the VPS inside /opt/bobianalyser
-# First deploy: git clone https://github.com/thorbengrosser/bobianalyser.git /opt/bobianalyser
+# Usage: run this on the VPS inside ~/dockers/bobianalyser
+# First deploy: git clone https://github.com/thorbengrosser/bobianalyser.git ~/dockers/bobianalyser
 # Subsequent:   ./deploy/deploy.sh
 set -e
 cd "$(dirname "$0")/.."

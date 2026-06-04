@@ -109,13 +109,19 @@ Front with nginx/caddy for TLS; allow CORS for your Ghost domain via `BORDBISTRO
 ## Deploy with Docker
 
 ```bash
-cp .env.example .env          # set BORDBISTRO_ADMIN_TOKEN + ALLOWED_ORIGIN
+# First time on the VPS
+git clone https://github.com/thorbengrosser/bobianalyser.git ~/dockers/bobianalyser
+cd ~/dockers/bobianalyser
+cp .env.example .env          # set BORDBISTRO_ADMIN_TOKEN + BORDBISTRO_ALLOWED_ORIGIN
 docker compose up -d --build  # api on 127.0.0.1:8765 + daily scraper sidecar
+
+# All future updates (one command)
+./deploy/deploy.sh
 ```
 
-`db.sqlite`, `snapshots/`, and `img-cache/` persist in `./data/`. Point your reverse
-proxy (Pangolin / Caddy / nginx) at `127.0.0.1:8765`. Schema migrations apply
-automatically at startup, so `git pull && docker compose up -d --build` is a safe upgrade.
+`db.sqlite`, `snapshots/`, and `img-cache/` persist in `~/dockers/bobianalyser/data/`. Point your reverse
+proxy (Pangolin) at `127.0.0.1:8765`. Schema migrations apply
+automatically at startup, so `./deploy/deploy.sh` is a safe upgrade path.
 
 ## Notes
 
