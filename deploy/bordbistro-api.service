@@ -1,0 +1,13 @@
+[Unit]
+Description=Bordbistro tracker API
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/bordbistro
+EnvironmentFile=/etc/bordbistro.env
+ExecStart=/opt/bordbistro/.venv/bin/uvicorn api:app --host 127.0.0.1 --port 8765
+Restart=always
+User=bordbistro
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    container_name: bordbistro-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"   # Pangolin connects here; not exposed publicly.
+    env_file: .env
+    volumes:
+      - ./data:/data            # db.sqlite + snapshots/ + img-cache/ live here.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8765/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  scraper:
+    build: .
+    container_name: bordbistro-scraper
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    # Sleep until 06:00 UTC, scrape, repeat. No cron daemon needed.
+    command: >
+      sh -c 'while true; do
+        now=$$(date -u +%s);
+        next=$$(date -u -d "tomorrow 06:00" +%s);
+        sleep $$((next - now));
+        python scraper.py;
+      done'

@@ -1,0 +1,10 @@
+db.sqlite
+db.sqlite-journal
+snapshots/
+img-cache/
+data/
+.env
+__pycache__/
+*.pyc
+.venv/
+.claude/

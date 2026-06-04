@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bordbistro Admin</title>
+  <style>
+    :root { --accent: #06c; }
+    body { font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; color: #1c1f24; }
+    h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
+    .muted { color: #6b7280; font-size: .85rem; }
+    .tabs { display: flex; gap: .25rem; margin: 1.5rem 0 1rem; border-bottom: 1px solid #e5e7eb; }
+    .tab { padding: .5rem 1rem; cursor: pointer; border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; font-size: .9rem; }
+    .tab.active { background: #f6f7f9; border-color: #e5e7eb; font-weight: 600; }
+    .filters { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+    .filters input, .filters select { padding: .45rem .6rem; border: 1px solid #d6d9de; border-radius: 8px; font-size: .9rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { padding: .55rem .5rem; border-bottom: 1px solid #eef0f2; text-align: left; vertical-align: middle; }
+    th { background: #fafafa; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: #6b7280; }
+    tr.hidden-row td { opacity: .5; }
+    .badge { display: inline-block; padding: .12rem .45rem; border-radius: 6px; font-size: .7rem; font-weight: 700; color: #fff; }
+    .b-ice { background: #ec0016; } .b-ic2 { background: #2a5fb4; }
+    .b-add { background: #1d8a4e; } .b-rem { background: #c0392b; } .b-ret { background: #b88a00; } .b-chg { background: #555; }
+    .img { width: 54px; height: 40px; object-fit: cover; border-radius: 7px; background: #f0f0f0; }
+    input[type=url], input[type=text], textarea { width: 100%; padding: .4rem; border: 1px solid #d6d9de; border-radius: 7px; font-size: .85rem; box-sizing: border-box; font-family: inherit; }
+    button { padding: .4rem .85rem; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 8px; cursor: pointer; font-size: .85rem; }
+    button.ghost { background: white; color: var(--accent); }
+    button.danger { background: white; color: #c0392b; border-color: #c0392b; }
+    .toast { position: fixed; top: 1rem; right: 1rem; padding: .6rem 1rem; background: #1d8a4e; color: white; border-radius: 8px; opacity: 0; transition: opacity .2s; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .toast.show { opacity: 1; } .toast.err { background: #c0392b; }
+    .needs-review { background: #fff8e1; }
+    code { background: #f1f3f5; padding: 1px 5px; border-radius: 4px; font-size: .8rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px,1fr)); gap: .7rem; margin: 1rem 0; }
+    .stat { background: #f6f7f9; border: 1px solid #e5e7eb; border-radius: 12px; padding: .8rem 1rem; }
+    .stat .v { font-size: 1.4rem; font-weight: 700; }
+    .stat .l { font-size: .75rem; color: #6b7280; text-transform: uppercase; letter-spacing: .03em; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; max-width: 560px; }
+    .field { margin-bottom: 1rem; }
+    .field label { display: block; font-weight: 600; font-size: .85rem; margin-bottom: .3rem; }
+    .field .hint { font-weight: 400; color: #6b7280; }
+    .row { display: flex; gap: .5rem; align-items: center; }
+  </style>
+</head>
+<body>
+  <h1>Bordbistro Admin</h1>
+
+  <div id="login" class="card" style="margin:1rem 0;">
+    <p style="margin:0 0 .5rem;"><strong>Login</strong></p>
+    <p class="muted" style="margin:0 0 .75rem;">Passwort = Wert der <code>BORDBISTRO_ADMIN_TOKEN</code> Umgebungsvariable, mit der der Server gestartet wurde.</p>
+    <div class="row">
+      <input type="password" id="token" placeholder="Passwort" style="max-width:260px;" onkeydown="if(event.key==='Enter')tryLogin()">
+      <button onclick="tryLogin()">Einloggen</button>
+      <button class="ghost" onclick="logout()" id="logout-btn" style="display:none;">Ausloggen</button>
+    </div>
+    <p id="login-err" class="muted" style="margin:.5rem 0 0; color:#c0392b;"></p>
+  </div>
+
+  <div id="app" style="display:none;">
+    <div class="tabs">
+      <div class="tab active" data-tab="overview">Übersicht</div>
+      <div class="tab" data-tab="changes">Änderungen</div>
+      <div class="tab" data-tab="items">Items &amp; Reviews</div>
+      <div class="tab" data-tab="settings">Einstellungen</div>
+    </div>
+
+    <section id="tab-overview">
+      <div class="stats" id="stats"></div>
+      <p class="muted" id="insights"></p>
+    </section>
+
+    <section id="tab-changes" style="display:none;">
+      <div class="filters">
+        <label>Seit <input type="date" id="changes-since"></label>
+        <select id="changes-field">
+          <option value="">alle Arten</option>
+          <option value="added">added</option><option value="removed">removed</option>
+          <option value="returned">returned</option><option value="price_eur">price_eur</option>
+          <option value="title_de">title_de</option>
+        </select>
+        <button onclick="loadChanges()">Aktualisieren</button>
+      </div>
+      <table><thead><tr><th>Datum</th><th>Art</th><th>Item</th><th>Alt → Neu</th><th></th></tr></thead>
+        <tbody id="changes-tbody"></tbody></table>
+    </section>
+
+    <section id="tab-items" style="display:none;">
+      <div class="filters">
+        <input id="items-q" placeholder="Suche…">
+        <select id="items-section"><option value="">alle Züge</option><option value="ice">ICE</option><option value="ic2">IC/EC</option></select>
+        <select id="items-register"><option value="">alle</option><option value="speisen">Speisen</option><option value="getraenke">Getränke</option></select>
+        <select id="items-filter">
+          <option value="">alle</option>
+          <option value="needs_review">nur „Needs review"</option>
+          <option value="has_review">nur mit Review</option>
+          <option value="no_review">nur ohne Review</option>
+          <option value="hidden">nur versteckt</option>
+        </select>
+      </div>
+      <table><thead><tr><th></th><th>Titel</th><th>Zug</th><th>Kategorie</th><th>€</th>
+        <th>Versteckt</th><th>Needs review</th><th>Blog URL</th><th></th></tr></thead>
+        <tbody id="items-tbody"></tbody></table>
+    </section>
+
+    <section id="tab-settings" style="display:none;">
+      <div class="card">
+        <p style="margin-top:0"><strong>Embed-Ausgabe</strong> <span class="muted">— steuert, was das Widget auf dem Blog zeigt.</span></p>
+        <div class="field"><label>Überschrift</label><input type="text" id="s-heading"></div>
+        <div class="field"><label>Untertitel</label><textarea id="s-intro" rows="2"></textarea></div>
+        <div class="field"><label>Standardsprache</label>
+          <select id="s-lang"><option value="de">DE</option><option value="en">EN</option><option value="fr">FR</option></select></div>
+        <div class="field"><label class="row"><input type="checkbox" id="s-kombi" style="width:auto"> Kombi-Menüs standardmäßig anzeigen</label></div>
+        <div class="field"><label class="row"><input type="checkbox" id="s-stats" style="width:auto"> Statistik-Leiste anzeigen</label></div>
+        <div class="field"><label>Akzentfarbe <span class="hint">(z. B. #ec0016)</span></label>
+          <div class="row"><input type="color" id="s-accent-c" style="width:48px;height:34px;padding:2px"><input type="text" id="s-accent" style="max-width:140px"></div></div>
+        <button onclick="saveSettings()">Speichern</button>
+        <a href="/" target="_blank" style="margin-left:.5rem; font-size:.85rem;">Vorschau ↗</a>
+      </div>
+
+      <div class="card" style="margin-top:1.25rem;">
+        <p style="margin-top:0"><strong>Webhook bei Änderungen</strong> <span class="muted">— feuert nach jedem Scrape mit allen geänderten Artikeln (für n8n / Zapier).</span></p>
+        <div class="field"><label>Webhook-URL</label><input type="url" id="s-webhook" placeholder="https://hooks.n8n.cloud/..."></div>
+        <div class="field"><label>Signatur-Secret <span class="hint">(optional — sendet <code>X-Bordbistro-Signature: sha256=…</code>)</span></label><input type="text" id="s-webhook-secret" placeholder="optional"></div>
+        <div class="row">
+          <button onclick="saveSettings()">Speichern</button>
+          <button class="ghost" onclick="testWebhook()">Webhook testen</button>
+        </div>
+        <p class="muted" style="margin:.6rem 0 0;">Payload: <code>{ event, date, count, summary, items:[{ id, title, section, status, changes }] }</code></p>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+const API = "";
+let token = localStorage.getItem("bb_token") || "";
+let allItems = [];
+
+const $ = (s) => document.querySelector(s);
+function toast(m, err) { const t = $("#toast"); t.textContent = m; t.className = "toast show" + (err ? " err" : ""); setTimeout(() => t.className = "toast", 2200); }
+function authHeaders(json) { const h = { Authorization: `Bearer ${token}` }; if (json) h["Content-Type"] = "application/json"; return h; }
+const _dec = document.createElement("textarea");
+function esc(s) { if (s == null) return ""; _dec.innerHTML = String(s); return _dec.value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+const imgUrl = (i) => i.img_normal ? `${API}/api/img/${i.id}` : "";
+
+async function tryLogin() {
+  const t = $("#token").value.trim();
+  if (!t) { $("#login-err").textContent = "Passwort eingeben."; return; }
+  const r = await fetch(`${API}/api/admin/check`, { headers: { Authorization: `Bearer ${t}` } });
+  if (!r.ok) { $("#login-err").textContent = `Falsches Passwort (${r.status}).`; return; }
+  token = t; localStorage.setItem("bb_token", t); showApp();
+}
+function logout() { token = ""; localStorage.removeItem("bb_token"); $("#token").value = ""; $("#app").style.display = "none"; $("#logout-btn").style.display = "none"; $("#login-err").textContent = ""; }
+function showApp() {
+  $("#login-err").textContent = ""; $("#app").style.display = ""; $("#logout-btn").style.display = "";
+  loadStats(); loadChanges(); loadItems(); loadSettings();
+}
+
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  ["overview", "changes", "items", "settings"].forEach(n => $("#tab-" + n).style.display = n === t.dataset.tab ? "" : "none");
+});
+
+// ---- Overview / stats ----
+async function loadStats() {
+  const s = await fetch(`${API}/api/stats`).then(r => r.json());
+  const cards = [
+    [s.total, "Gerichte verfügbar"],
+    [s.price.avg != null ? "⌀ " + s.price.avg.toFixed(2) + " €" : "–", "Schnittpreis"],
+    [s.price.min != null ? s.price.min.toFixed(2) + "–" + s.price.max.toFixed(2) + " €" : "–", "Preisspanne"],
+    [s.new_7d, "neu (7 Tage)"],
+    [s.with_review, "mit Review"],
+    [s.needs_review, "Needs review"],
+    [s.flags.vegan, "vegan"], [s.flags.aktion, "Aktion"],
+    [s.changes_7d, "Änderungen (7 T)"], [s.changes_30d, "Änderungen (30 T)"],
+  ];
+  $("#stats").innerHTML = cards.map(([v, l]) => `<div class="stat"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  const ce = s.cheapest, ex = s.most_expensive;
+  $("#insights").innerHTML = `Zug-Verteilung: ICE ${s.by_section.ice || 0} · IC/EC ${s.by_section.ic2 || 0}.`
+    + (ce ? ` Günstigster: <strong>${esc(ce.title)}</strong> (${ce.price.toFixed(2)} €).` : "")
+    + (ex ? ` Teuerster: <strong>${esc(ex.title)}</strong> (${ex.price.toFixed(2)} €).` : "");
+}
+
+// ---- Changes ----
+async function loadChanges() {
+  const since = $("#changes-since").value || new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  const field = $("#changes-field").value;
+  let data = await fetch(`${API}/api/changes?since=${since}&limit=500`).then(r => r.json());
+  if (field) data = data.filter(c => c.field === field);
+  $("#changes-tbody").innerHTML = data.map(c => {
+    const cls = { added: "b-add", removed: "b-rem", returned: "b-ret" }[c.field] || "b-chg";
+    return `<tr><td><code>${esc(c.changed_at)}</code></td><td><span class="badge ${cls}">${esc(c.field)}</span></td>
+      <td>${esc(c.title)} <span class="muted">#${c.item_id}</span></td>
+      <td><span class="muted">${esc(c.old_value)}</span> → <strong>${esc(c.new_value)}</strong></td>
+      <td><button class="ghost" onclick="jumpToItem(${c.item_id})">Edit</button></td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="muted">Keine Änderungen.</td></tr>`;
+}
+
+// ---- Items ----
+async function loadItems() {
+  allItems = await fetch(`${API}/api/items?available=1&include_hidden=1`).then(r => r.json());
+  renderItems();
+}
+function renderItems() {
+  const q = $("#items-q").value.toLowerCase(), sec = $("#items-section").value, reg = $("#items-register").value, filt = $("#items-filter").value;
+  const list = allItems.filter(i => {
+    if (q && !(i.title_de + " " + (i.chapter_name || "")).toLowerCase().includes(q)) return false;
+    if (sec && i.section !== sec) return false;
+    if (reg && i.register !== reg) return false;
+    if (filt === "needs_review" && !i.needs_review) return false;
+    if (filt === "has_review" && !i.blog_url) return false;
+    if (filt === "no_review" && i.blog_url) return false;
+    if (filt === "hidden" && !i.hidden) return false;
+    return true;
+  });
+  $("#items-tbody").innerHTML = list.map(i => `
+    <tr id="row-${i.id}" class="${i.needs_review ? "needs-review" : ""} ${i.hidden ? "hidden-row" : ""}">
+      <td>${i.img_normal ? `<img class="img" loading="lazy" src="${imgUrl(i)}">` : ""}</td>
+      <td><strong>${esc(i.title_de)}</strong><br><small class="muted">#${i.id} · ${esc(i.register)}${i.flags && i.flags.kombi ? " · Kombi" : ""}</small></td>
+      <td><span class="badge b-${i.section}">${i.section === "ic2" ? "IC/EC" : "ICE"}</span></td>
+      <td>${esc(i.chapter_name || "")}</td>
+      <td>${i.price_eur != null ? i.price_eur.toFixed(2) : ""}</td>
+      <td><input type="checkbox" id="hd-${i.id}" ${i.hidden ? "checked" : ""} onchange="patch(${i.id}, {hidden: this.checked})"></td>
+      <td><input type="checkbox" id="nr-${i.id}" ${i.needs_review ? "checked" : ""} onchange="patch(${i.id}, {needs_review: this.checked})"></td>
+      <td><input type="url" id="url-${i.id}" value="${esc(i.blog_url || "")}" placeholder="https://blog.../"></td>
+      <td><div class="row"><button onclick="patch(${i.id}, {blog_url: $('#url-' + ${i.id}).value || null})">URL</button>
+        ${i.blog_url || i.needs_review || i.hidden ? `<button class="danger" onclick="deleteReview(${i.id})">✕</button>` : ""}</div></td>
+    </tr>`).join("") || `<tr><td colspan="9" class="muted">Keine Items.</td></tr>`;
+}
+
+async function patch(id, body) {
+  if (!token) return toast("Token fehlt", true);
+  const r = await fetch(`${API}/api/reviews/${id}`, { method: "POST", headers: authHeaders(true), body: JSON.stringify(body) });
+  if (!r.ok) { toast(`Fehler: ${r.status}`, true); return; }
+  const d = await r.json();
+  const it = allItems.find(x => x.id === id);
+  if (it) { it.blog_url = d.blog_url; it.needs_review = d.needs_review; it.hidden = d.hidden; }
+  const row = $("#row-" + id);
+  if (row) { row.classList.toggle("needs-review", !!d.needs_review); row.classList.toggle("hidden-row", !!d.hidden); }
+  toast("Gespeichert");
+}
+async function deleteReview(id) {
+  if (!token || !confirm("Eintrag wirklich löschen?")) return;
+  const r = await fetch(`${API}/api/reviews/${id}`, { method: "DELETE", headers: authHeaders() });
+  if (!r.ok) return toast(`Fehler: ${r.status}`, true);
+  const it = allItems.find(x => x.id === id);
+  if (it) { it.blog_url = null; it.needs_review = 0; it.hidden = 0; }
+  renderItems(); toast("Gelöscht");
+}
+function jumpToItem(id) {
+  document.querySelector('.tab[data-tab="items"]').click();
+  $("#items-q").value = ""; renderItems();
+  setTimeout(() => { const r = $("#row-" + id); if (r) { r.scrollIntoView({ behavior: "smooth", block: "center" }); r.style.outline = "2px solid var(--accent)"; setTimeout(() => r.style.outline = "", 1500); } }, 80);
+}
+
+// ---- Settings (admin endpoint includes webhook config) ----
+async function loadSettings() {
+  const s = await fetch(`${API}/api/admin/settings`, { headers: authHeaders() }).then(r => r.json());
+  $("#s-heading").value = s.heading || ""; $("#s-intro").value = s.intro || "";
+  $("#s-lang").value = s.default_lang || "de";
+  $("#s-kombi").checked = s.show_kombi === true; $("#s-stats").checked = s.show_stats !== false;
+  $("#s-accent").value = s.accent || "#ec0016"; $("#s-accent-c").value = s.accent || "#ec0016";
+  $("#s-webhook").value = s.webhook_url || ""; $("#s-webhook-secret").value = s.webhook_secret || "";
+}
+$("#s-accent-c").addEventListener("input", e => $("#s-accent").value = e.target.value);
+async function saveSettings() {
+  if (!token) return toast("Token fehlt", true);
+  const body = {
+    heading: $("#s-heading").value, intro: $("#s-intro").value, default_lang: $("#s-lang").value,
+    show_kombi: $("#s-kombi").checked, show_stats: $("#s-stats").checked, accent: $("#s-accent").value,
+    webhook_url: $("#s-webhook").value, webhook_secret: $("#s-webhook-secret").value,
+  };
+  const r = await fetch(`${API}/api/settings`, { method: "PUT", headers: authHeaders(true), body: JSON.stringify(body) });
+  toast(r.ok ? "Einstellungen gespeichert" : `Fehler: ${r.status}`, !r.ok);
+}
+async function testWebhook() {
+  if (!token) return toast("Token fehlt", true);
+  toast("Sende Test…");
+  const r = await fetch(`${API}/api/admin/webhook-test`, { method: "POST", headers: authHeaders() });
+  if (!r.ok) return toast(r.status === 400 ? "Keine Webhook-URL gespeichert" : `Fehler: ${r.status}`, true);
+  const d = await r.json();
+  toast(d.ok ? `Webhook OK (HTTP ${d.status})` : `Webhook fehlgeschlagen: ${d.status || d.detail}`, !d.ok);
+}
+
+$("#changes-since").value = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+["items-q", "items-section", "items-register", "items-filter"].forEach(id => $("#" + id).addEventListener("input", renderItems));
+if (token) { $("#token").value = token; fetch(`${API}/api/admin/check`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.ok ? showApp() : logout()); }
+</script>
+</body>
+</html>

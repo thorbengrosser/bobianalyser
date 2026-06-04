@@ -1,0 +1,9 @@
+[Unit]
+Description=Bordbistro menu scraper (one-shot)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bordbistro
+ExecStart=/opt/bordbistro/.venv/bin/python scraper.py
+User=bordbistro
