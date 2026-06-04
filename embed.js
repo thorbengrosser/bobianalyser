@@ -1,20 +1,23 @@
 (function () {
-  const root = document.getElementById("bb-tracker");
-  if (!root) return;
-  const API = root.dataset.api || (document.currentScript && new URL(document.currentScript.src).origin) || "";
+  const host = document.getElementById("bb-tracker");
+  if (!host) return;
+  const API = host.dataset.api || (document.currentScript && new URL(document.currentScript.src).origin) || "";
+  // Shadow DOM isolates the widget from the host theme's CSS (Ghost styles its
+  // post-content <table>s, which otherwise bleed in). Fall back to the element
+  // itself if Shadow DOM is unavailable.
+  const root = host.shadowRoot || (host.attachShadow ? host.attachShadow({ mode: "open" }) : host);
   const SECTION_LABEL = { ice: "ICE", ic2: "IC/EC" };
   const imgUrl = (i) => (i.img_normal ? `${API}/api/img/${i.id}` : "");
 
   let all = [], settings = {}, sortBy = "chapter_name", sortDir = 1;
+  const $ = (s) => root.querySelector(s);
 
-  // ---- text helpers (decode entities, strip/​sanitize HTML) ----
+  // ---- text helpers ----
   const _dec = document.createElement("textarea");
   function decode(s) { if (s == null) return ""; _dec.innerHTML = String(s); return _dec.value; }
   function text(s) { return decode(s).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim(); }
   function esc(s) { return text(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   function attr(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-  // Ingredients ship as raw HTML with external logo <img>s — keep only b/strong/br,
-  // drop everything else (inert via DOMParser: no script run, no external fetch).
   function sanitize(html) {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
     doc.querySelectorAll("img, script, style, div").forEach((n) => n.remove());
@@ -28,24 +31,24 @@
   function lang() { return $("#bb-lang").value; }
   function title(i) { return i["title_" + lang()] || i.title_de; }
   function desc(i) { return i["description_" + lang()] || i.description_de; }
-  const $ = (s) => root.querySelector(s);
 
-  // ---- boot: fetch settings + items in parallel ----
+  // ---- boot: fetch CSS + settings + items + stats in parallel ----
   Promise.all([
+    fetch(`${API}/embed.css`).then((r) => r.text()).catch(() => ""),
     fetch(`${API}/api/settings`).then((r) => r.json()).catch(() => ({})),
     fetch(`${API}/api/items?available=1`).then((r) => r.json()),
     fetch(`${API}/api/stats`).then((r) => r.json()).catch(() => null),
-  ]).then(([s, items, stats]) => {
+  ]).then(([css, s, items, stats]) => {
     settings = s || {};
     all = items;
-    build(stats);
+    build(css, stats);
     render();
   });
 
-  function build(stats) {
-    if (settings.accent) root.style.setProperty("--bb-accent", settings.accent);
+  function build(css, stats) {
+    if (settings.accent && host.style) host.style.setProperty("--bb-accent", settings.accent);
     const showStats = settings.show_stats !== false && stats;
-    root.innerHTML = `
+    root.innerHTML = `<style>${css}</style><div class="bb-wrap">
       ${settings.heading || settings.intro ? `<div class="bb-head">
         ${settings.heading ? `<h2>${esc(settings.heading)}</h2>` : ""}
         ${settings.intro ? `<p>${esc(settings.intro)}</p>` : ""}
@@ -78,7 +81,7 @@
       </table>
       <div class="bb-modal-bg"></div>
       <div class="bb-modal"><button class="bb-close" aria-label="Schließen">×</button><div class="bb-modal-content"></div></div>
-    `;
+    </div>`;
     $("#bb-lang").value = settings.default_lang || "de";
     $("#bb-kombi").checked = settings.show_kombi === true;
     const modal = root.querySelector(".bb-modal"), bg = root.querySelector(".bb-modal-bg");
@@ -186,7 +189,7 @@
       const y = max === min ? h / 2 : h - ((v - min) / (max - min)) * (h - 4) - 2;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(" ");
-    return `<svg width="${w}" height="${h}" style="vertical-align:middle;margin-left:.4rem"><polyline points="${pts}" fill="none" stroke="var(--bb-accent)" stroke-width="1.5"/></svg>`;
+    return `<svg width="${w}" height="${h}" style="vertical-align:middle;margin-left:6px"><polyline points="${pts}" fill="none" stroke="var(--bb-accent)" stroke-width="1.5"/></svg>`;
   }
 
   function exportCsv() {

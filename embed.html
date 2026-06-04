@@ -4,16 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bordbistro Tracker — Preview</title>
-  <link rel="stylesheet" href="/embed.css">
   <style>
-    body { background: #fbfbfc; margin: 0; padding: 2rem 1rem; }
+    body { background: #fbfbfc; margin: 0; padding: 2rem 1rem; font-family: -apple-system, system-ui, sans-serif; }
     .wrap { max-width: 1000px; margin: 0 auto; }
-    .note { font: .8rem -apple-system, system-ui, sans-serif; color: #9aa3af; text-align: center; margin-top: 2rem; }
+    .note { font-size: .8rem; color: #9aa3af; text-align: center; margin-top: 2rem; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <!-- This is exactly what you paste into a Ghost HTML card: -->
+    <!-- This is the whole embed — paste these two lines into a Ghost HTML card.
+         The widget renders inside a Shadow Root, so it ignores your theme's CSS
+         and styles itself. No stylesheet <link> needed. -->
     <div id="bb-tracker" data-api=""></div>
     <script src="/embed.js"></script>
     <p class="note">Vorschau · Inhalte &amp; Titel werden über <code>/admin</code> → Einstellungen gesteuert.</p>

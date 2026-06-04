@@ -43,13 +43,16 @@ Open `http://127.0.0.1:8765/` for the live preview and `/admin` for the admin po
 
 ## Ghost embed
 
-Paste this into an HTML card on any Ghost post:
+Paste these two lines into an HTML card on any Ghost post:
 
 ```html
-<link rel="stylesheet" href="https://your-vps/embed.css">
 <div id="bb-tracker" data-api="https://your-vps"></div>
 <script src="https://your-vps/embed.js"></script>
 ```
+
+The widget renders inside a **Shadow Root**, so the Ghost theme's CSS can't bleed
+in (and the widget's CSS can't leak out) — it loads and applies its own styles. No
+`<link rel="stylesheet">` is required.
 
 ## Admin portal
 
