@@ -56,6 +56,11 @@ The widget renders inside a **Shadow Root**, so the Ghost theme's CSS can't blee
 in (and the widget's CSS can't leak out) — it loads and applies its own styles. No
 `<link rel="stylesheet">` is required.
 
+**Dark mode:** the widget reads the computed background colour behind it and switches
+to a dark palette automatically, re-checking whenever the theme toggles a class or
+attribute on `<html>`/`<body>`. To force a palette add `data-theme="dark"` (or
+`"light"`) to the `#bb-tracker` div.
+
 ## Admin portal
 
 Open `/admin`, log in with `BORDBISTRO_ADMIN_TOKEN`. Tabs:

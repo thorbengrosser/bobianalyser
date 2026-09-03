@@ -4,11 +4,16 @@
   all: initial;                 /* block inherited theme props (font, line-height, etc.) */
   display: block;
   --bb-accent: #ec0016;
-  --bb-bg: #fff;
   --bb-fg: #1c1f24;
+  --bb-fg-2: #374151;           /* body copy inside the modal */
   --bb-muted: #6b7280;
   --bb-line: #eceef1;
-  --bb-soft: #f6f7f9;
+  --bb-soft: #f6f7f9;           /* stat cards, row hover */
+  --bb-panel: #fff;             /* inputs, buttons, modal */
+  --bb-border: #d6d9de;
+  --bb-code-bg: #f1f3f5;
+  --bb-flag-bg: #eef1f6;
+  --bb-flag-fg: #475569;
   font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -16,6 +21,29 @@
   -webkit-font-smoothing: antialiased;
   text-align: left;
 }
+/* Dark palette — embed.js adds .bb-dark to the host element when the page behind
+   the widget is dark (detected from the computed background, or forced via
+   data-theme="dark"). Background stays transparent so the theme's own shows. */
+:host(.bb-dark) {
+  --bb-fg: #e6e8eb;
+  --bb-fg-2: #c9ced6;
+  --bb-muted: #9aa3af;
+  --bb-line: #2e333b;
+  --bb-soft: #1f2329;
+  --bb-panel: #181b20;
+  --bb-border: #3a404a;
+  --bb-code-bg: #2a2f37;
+  --bb-flag-bg: #2a2f37;
+  --bb-flag-fg: #cbd5e1;
+  color-scheme: dark;           /* native select/checkbox/search chrome follows */
+}
+:host(.bb-dark) .bb-flag.aktion { background: #4a1d1d; color: #f5a3a3; }
+:host(.bb-dark) .bb-flag.neu { background: #17392a; color: #8fe0ad; }
+:host(.bb-dark) .bb-flag.vegan, :host(.bb-dark) .bb-flag.vegetarian { background: #1a3a1e; color: #9fdc9c; }
+:host(.bb-dark) .bb-flag.bio { background: #2b3a14; color: #c3dd8a; }
+:host(.bb-dark) .bb-modal { box-shadow: 0 24px 60px rgba(0,0,0,.6); }
+:host(.bb-dark) .bb-modal-bg { background: rgba(0,0,0,.6); }
+
 *, *::before, *::after { box-sizing: border-box; }
 .bb-wrap { width: 100%; }
 
@@ -31,13 +59,13 @@
 
 /* Controls */
 .bb-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--bb-line); }
-.bb-controls input, .bb-controls select { font-family: inherit; padding: 7px 10px; border: 1px solid #d6d9de; border-radius: 8px; font-size: 14px; background: #fff; color: inherit; line-height: 1.2; height: auto; margin: 0; }
+.bb-controls input, .bb-controls select { font-family: inherit; padding: 7px 10px; border: 1px solid var(--bb-border); border-radius: 8px; font-size: 14px; background: var(--bb-panel); color: inherit; line-height: 1.2; height: auto; margin: 0; }
 .bb-controls input[type=search] { flex: 1 1 180px; min-width: 140px; }
 .bb-controls input:focus, .bb-controls select:focus { outline: 2px solid color-mix(in srgb, var(--bb-accent) 40%, transparent); border-color: var(--bb-accent); }
 .bb-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--bb-muted); }
 .bb-check input { width: auto; margin: 0; }
 .bb-spacer { flex: 1 1 auto; }
-.bb-csv { font-family: inherit; padding: 7px 11px; border: 1px solid #d6d9de; background: #fff; border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--bb-muted); }
+.bb-csv { font-family: inherit; padding: 7px 11px; border: 1px solid var(--bb-border); background: var(--bb-panel); border-radius: 8px; font-size: 13px; cursor: pointer; color: var(--bb-muted); }
 .bb-csv:hover { border-color: var(--bb-accent); color: var(--bb-accent); }
 
 /* Table */
@@ -59,7 +87,7 @@ tbody tr:hover { background: var(--bb-soft); }
 .bb-section-ice { background: var(--bb-accent); }
 .bb-section-ic2 { background: #2a5fb4; }
 .bb-flags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.bb-flag { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: #eef1f6; color: #475569; font-weight: 600; }
+.bb-flag { font-size: 11px; padding: 2px 6px; border-radius: 6px; background: var(--bb-flag-bg); color: var(--bb-flag-fg); font-weight: 600; }
 .bb-flag.aktion { background: #fdecec; color: #c0392b; }
 .bb-flag.neu { background: #e7f6ec; color: #1d8a4e; }
 .bb-flag.vegan, .bb-flag.vegetarian { background: #eaf7e9; color: #2f7d32; }
@@ -75,17 +103,17 @@ tbody tr:hover { background: var(--bb-soft); }
 /* Modal */
 .bb-modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 9998; display: none; }
 .bb-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  max-width: 640px; width: calc(100% - 32px); max-height: 88vh; overflow: auto; background: #fff;
+  max-width: 640px; width: calc(100% - 32px); max-height: 88vh; overflow: auto; background: var(--bb-panel); color: var(--bb-fg);
   padding: 24px 26px; border-radius: 16px; z-index: 9999; display: none; box-shadow: 0 24px 60px rgba(0,0,0,.25); }
 .bb-modal h3 { margin: 0 24px 4px 0; font-size: 20px; font-weight: 700; line-height: 1.2; }
 .bb-modal p { margin: 8px 0; }
 .bb-modal .bb-close { position: absolute; top: 12px; right: 16px; cursor: pointer; font-size: 26px; line-height: 1; color: #9aa3af; background: none; border: none; padding: 0; }
 .bb-modal details { margin-top: 12px; border-top: 1px solid var(--bb-line); padding-top: 10px; }
 .bb-modal summary { cursor: pointer; font-weight: 600; font-size: 14px; }
-.bb-ingredients { font-size: 13px; color: #374151; margin-top: 8px; line-height: 1.5; }
+.bb-ingredients { font-size: 13px; color: var(--bb-fg-2); margin-top: 8px; line-height: 1.5; }
 .bb-history { font-size: 13px; color: var(--bb-muted); margin: 8px 0 0; padding-left: 18px; }
 .bb-history li { margin-bottom: 4px; }
-.bb-history code { background: #f1f3f5; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.bb-history code { background: var(--bb-code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
 @media (max-width: 620px) {
   .bb-hide-sm { display: none; }

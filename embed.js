@@ -12,6 +12,35 @@
   let all = [], settings = {}, sortBy = "chapter_name", sortDir = 1;
   const $ = (s) => root.querySelector(s);
 
+  // ---- theme: follow the page behind the widget ----
+  // Ghost themes toggle dark mode via a class/attribute on <html>, not always via
+  // prefers-color-scheme, so we look at the actual computed background behind the
+  // host. `data-theme="light|dark"` on #bb-tracker forces a palette.
+  function parseRgb(s) {
+    const m = /rgba?\(\s*([\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)(?:[ ,/]+([\d.]+%?))?\s*\)/.exec(s || "");
+    if (!m) return null;
+    let a = m[4] == null ? 1 : parseFloat(m[4]); if (/%$/.test(m[4] || "")) a /= 100;
+    return { r: +m[1], g: +m[2], b: +m[3], a };
+  }
+  function hostIsDark() {
+    const forced = (host.dataset.theme || "").toLowerCase();
+    if (forced === "dark" || forced === "light") return forced === "dark";
+    for (let el = host.parentElement; el; el = el.parentElement) {
+      const c = parseRgb(getComputedStyle(el).backgroundColor);
+      if (c && c.a > 0.05) return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 128;
+    }
+    return !!(window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  }
+  function applyTheme() { host.classList.toggle("bb-dark", hostIsDark()); }
+  applyTheme();
+  if (window.MutationObserver) {
+    const mo = new MutationObserver(applyTheme);
+    const opts = { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-color-scheme", "data-mode"] };
+    mo.observe(document.documentElement, opts);
+    if (document.body) mo.observe(document.body, opts);
+  }
+  if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+
   // ---- text helpers ----
   const _dec = document.createElement("textarea");
   function decode(s) { if (s == null) return ""; _dec.innerHTML = String(s); return _dec.value; }
