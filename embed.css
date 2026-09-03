@@ -67,6 +67,11 @@ tbody tr:hover { background: var(--bb-soft); }
 .bb-review { color: var(--bb-accent); text-decoration: none; font-weight: 600; white-space: nowrap; }
 .bb-review:hover { text-decoration: underline; }
 
+/* Footer (data freshness) */
+.bb-foot { font-size: 12px; color: var(--bb-muted); margin: 10px 0 0; text-align: right; }
+.bb-foot strong { font-weight: 600; color: var(--bb-fg); }
+.bb-foot-warn { color: #c0392b; cursor: help; }
+
 /* Modal */
 .bb-modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 9998; display: none; }
 .bb-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);

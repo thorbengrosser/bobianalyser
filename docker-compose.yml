@@ -22,11 +22,14 @@ services:
     env_file: .env
     volumes:
       - ./data:/data
-    # Sleep until 06:00 UTC, scrape, repeat. No cron daemon needed.
+    # Scrape once on start (so a fresh deploy is never empty), then sleep until the
+    # next 06:00 UTC — today's if still ahead, otherwise tomorrow's. No cron needed.
     command: >
-      sh -c 'while true; do
+      sh -c 'python scraper.py;
+      while true; do
         now=$$(date -u +%s);
-        next=$$(date -u -d "tomorrow 06:00" +%s);
+        next=$$(date -u -d "06:00" +%s);
+        [ "$$next" -le "$$now" ] && next=$$(date -u -d "tomorrow 06:00" +%s);
         sleep $$((next - now));
         python scraper.py;
       done'

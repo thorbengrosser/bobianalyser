@@ -33,9 +33,11 @@ Open `http://127.0.0.1:8765/` for the live preview and `/admin` for the admin po
 | `GET /api/items/{id}/availability` | — | availability intervals + total days on menu |
 | `GET /api/changes` | — | recent change log; `?since=YYYY-MM-DD&limit=` |
 | `GET /api/stats` | — | totals, price min/avg/max, flag counts, new-this-week, insights |
+| `GET /api/status` | — | fetch health: `last_success`, `last_attempt`, `last_run` (per-target failures), `latest_snapshot_date` |
 | `GET /api/settings` | — | **public** embed config only (heading, intro, lang, accent, …) |
 | `GET /api/img/{id}` | — | proxied + on-disk-cached item image (local-first, no third-party hotlink) |
 | `GET /api/admin/settings` | ✓ | full config incl. webhook URL/secret |
+| `GET /api/admin/fetch-log` | ✓ | raw fetch attempts, newest first; `?limit=` (max 1000) |
 | `PUT /api/settings` | ✓ | update any setting (public + admin keys) |
 | `POST /api/reviews/{id}` | ✓ | partial upsert: `blog_url`, `rating`, `notes`, `needs_review`, `hidden` |
 | `DELETE /api/reviews/{id}` | ✓ | remove review row |
@@ -60,6 +62,7 @@ Open `/admin`, log in with `BORDBISTRO_ADMIN_TOKEN`. Tabs:
 
 - **Übersicht** — stats + insights (cheapest/priciest, train split, change volume).
 - **Änderungen** — change log with type badges; jump-to-edit.
+- **Abrufe** — fetch log: every scrape attempt per (section, register) with status, item counts, duration and error. The overview shows the last successful fetch + last attempt; the public widget prints the same in its footer (`Stand: …`).
 - **Items & Reviews** — set review URL, mark *Needs review*, or **hide** an item from the public embed (manual override for untagged combo offers).
 - **Einstellungen** — embed output (heading, intro, default language, show/hide Kombi menus, stats bar, accent colour) + the change webhook.
 
@@ -126,8 +129,21 @@ docker compose up -d --build  # api on 127.0.0.1:8765 + daily scraper sidecar
 proxy (Pangolin) at `127.0.0.1:8765`. Schema migrations apply
 automatically at startup, so `./deploy/deploy.sh` is a safe upgrade path.
 
+## Search engines
+
+This host is **not indexable**: every response carries `X-Robots-Tag: noindex, nofollow`,
+the preview and admin pages add `<meta name="robots" content="noindex, nofollow">`, and
+`/robots.txt` deliberately allows crawling so Google can *see* the noindex and drop
+already-indexed URLs. The blog post that embeds the widget is unaffected (the widget is
+loaded client-side from the blog's own page).
+
 ## Notes
 
+- Every scrape writes one `fetch_log` row per target, success or failure. An **empty**
+  upstream response while items are known is treated as a failure (logged, snapshot
+  skipped) — it would otherwise mark the whole section as removed and fire the webhook.
+  `scraper.py` exits non-zero if any target failed.
+- The Docker scraper sidecar scrapes once on start, then at every 06:00 UTC.
 - Sections are `ice` (ICE long-distance) and `ic2` (IC/EC) — different menus. `items.section` reflects the last-seen section if an item appears in both.
 - The embed loads **no external/CDN assets**; item images are proxied + cached through `/api/img/{id}`, and the ingredients view strips the API's inline logo `<img>`s, so a visitor's browser only talks to your server.
 - DB tags combo offers with the `kombi` flag — the embed hides them by default (toggle in the toolbar / default in admin settings). Untagged combos can be hidden per-item in `/admin`.

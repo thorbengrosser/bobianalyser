@@ -50,6 +50,22 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- One row per (section, register) fetch attempt. `ok=1` means the upstream API
+-- answered and the response was ingested; `error` explains failures.
+CREATE TABLE IF NOT EXISTS fetch_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,          -- ISO timestamp (UTC) shared by all rows of one scrape run
+  fetched_at TEXT NOT NULL,      -- ISO timestamp (UTC) of this attempt
+  section TEXT NOT NULL,
+  register TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  http_status INTEGER,
+  present INTEGER, added INTEGER, changed INTEGER, removed INTEGER,
+  duration_ms INTEGER,
+  error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_fetch_log_time ON fetch_log(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_changes_item ON change_log(item_id, changed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_changes_recent ON change_log(changed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_versions_date ON item_versions(snapshot_date);

@@ -38,14 +38,15 @@
     fetch(`${API}/api/settings`).then((r) => r.json()).catch(() => ({})),
     fetch(`${API}/api/items?available=1`).then((r) => r.json()),
     fetch(`${API}/api/stats`).then((r) => r.json()).catch(() => null),
-  ]).then(([css, s, items, stats]) => {
+    fetch(`${API}/api/status`).then((r) => r.json()).catch(() => null),
+  ]).then(([css, s, items, stats, status]) => {
     settings = s || {};
     all = items;
-    build(css, stats);
+    build(css, stats, status);
     render();
   });
 
-  function build(css, stats) {
+  function build(css, stats, status) {
     if (settings.accent && host.style) host.style.setProperty("--bb-accent", settings.accent);
     const showStats = settings.show_stats !== false && stats;
     root.innerHTML = `<style>${css}</style><div class="bb-wrap">
@@ -79,6 +80,7 @@
         </tr></thead>
         <tbody id="bb-tbody"></tbody>
       </table>
+      ${footer(status)}
       <div class="bb-modal-bg"></div>
       <div class="bb-modal"><button class="bb-close" aria-label="Schließen">×</button><div class="bb-modal-content"></div></div>
     </div>`;
@@ -108,6 +110,28 @@
     ];
     return `<div class="bb-stats">${cards.map(([v, l]) =>
       `<div class="bb-stat"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("")}</div>`;
+  }
+
+  // ---- footer: data freshness from /api/status ----
+  function fmtDate(iso) {
+    if (!iso) return "–";
+    const d = new Date(iso);
+    return isNaN(d) ? esc(iso) : esc(d.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" }));
+  }
+  function footer(st) {
+    if (!st) return "";
+    if (!st.last_success && !st.last_attempt) {
+      return `<div class="bb-foot">Noch kein Abruf protokolliert.</div>`;
+    }
+    let s = `Stand: <strong>${fmtDate(st.last_success)}</strong>`;
+    const run = st.last_run;
+    if (run && !run.ok) {
+      const n = run.failed ? run.failed.length : 0;
+      s += ` · <span class="bb-foot-warn" title="${attr(run.failed.map((f) => `${f.section}/${f.register}: ${f.error || ""}`).join("\n"))}">Letzter Abruf ${fmtDate(st.last_attempt)}: ${n === run.targets ? "fehlgeschlagen" : `${n} von ${run.targets} Abfragen fehlgeschlagen`}</span>`;
+    } else if (st.last_attempt && st.last_attempt !== st.last_success) {
+      s += ` · Letzter Abruf ${fmtDate(st.last_attempt)}`;
+    }
+    return `<div class="bb-foot">${s}</div>`;
   }
 
   function passes(i) {

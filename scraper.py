@@ -360,6 +360,47 @@ def _change_record(item_id, title, section, register, status, changes) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Fetch log — one row per (section, register) attempt, success or failure      #
+# --------------------------------------------------------------------------- #
+
+def utc_now() -> str:
+    """ISO-8601 UTC timestamp with a trailing Z, second precision."""
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def log_fetch(
+    conn: sqlite3.Connection,
+    run_id: str,
+    section: str,
+    register: str,
+    *,
+    ok: bool,
+    http_status: int | None = None,
+    stats: dict | None = None,
+    duration_ms: int | None = None,
+    error: str | None = None,
+) -> None:
+    stats = stats or {}
+    conn.execute(
+        """INSERT INTO fetch_log (run_id, fetched_at, section, register, ok, http_status,
+             present, added, changed, removed, duration_ms, error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            run_id, utc_now(), section, register, 1 if ok else 0, http_status,
+            stats.get("present"), stats.get("added"), stats.get("changed"), stats.get("removed"),
+            duration_ms, (error or None) and str(error)[:300],
+        ),
+    )
+    conn.commit()
+
+
+def _article_count(data: dict) -> int:
+    return sum(
+        len(ch.get("articles") or []) for ch in data.get("artikel", []) if isinstance(ch, dict)
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Webhook (configured via the `settings` table; admin-only, not in public API) #
 # --------------------------------------------------------------------------- #
 
@@ -456,27 +497,64 @@ def ingest(
     return stats, changes
 
 
-def run_live(conn: sqlite3.Connection) -> None:
+def run_live(conn: sqlite3.Connection) -> int:
+    """Fetch + ingest every target. Returns the number of failed targets.
+
+    Every attempt — success or failure — leaves a row in `fetch_log`, so the API
+    can report when the menu was last refreshed and whether the last run worked.
+    """
     today = dt.date.today().isoformat()
+    run_id = utc_now()
     run_changes: list[dict] = []
+    failures = 0
     for section, register in TARGETS:
+        t0 = time.monotonic()
+        elapsed = lambda: int((time.monotonic() - t0) * 1000)  # noqa: E731
+
+        def fail(msg: str, status: int | None = None) -> None:
+            nonlocal failures
+            failures += 1
+            print(f"[warn] {section}/{register}: {msg}", file=sys.stderr)
+            log_fetch(conn, run_id, section, register, ok=False, http_status=status,
+                      duration_ms=elapsed(), error=msg)
+
         try:
             data = fetch(section, register)
         except requests.HTTPError as e:
-            print(f"[warn] {section}/{register}: HTTP {e.response.status_code}", file=sys.stderr)
+            code = e.response.status_code if e.response is not None else None
+            fail(f"HTTP {code}", code)
             continue
         except requests.RequestException as e:
-            print(f"[warn] {section}/{register}: {e}", file=sys.stderr)
+            fail(f"request failed: {e}")
             continue
         if data is None:
-            print(f"[info] {section}/{register}: no data")
+            fail("no data (404 or unexpected payload)")
             continue
+
+        # Guard: an empty `artikel` list while we know items for this target would
+        # mark the whole section as removed and fire the webhook. Treat as failure.
+        known = conn.execute(
+            "SELECT count(*) FROM items WHERE section=? AND register=? AND currently_available=1",
+            (section, register),
+        ).fetchone()[0]
+        if _article_count(data) == 0 and known:
+            fail(f"empty response while {known} items are known — skipped to avoid mass removal", 200)
+            continue
+
         save_snapshot(data, section, register, today)
-        stats, changes = ingest(conn, data, section, register, today)
+        try:
+            stats, changes = ingest(conn, data, section, register, today)
+        except Exception as e:  # noqa: BLE001 — log the row, keep the other targets going
+            conn.rollback()
+            fail(f"ingest failed: {e!r}", 200)
+            continue
         run_changes.extend(changes)
+        log_fetch(conn, run_id, section, register, ok=True, http_status=200,
+                  stats=stats, duration_ms=elapsed())
         print(f"[ok] {section}/{register}: {stats}")
         time.sleep(0.5)  # be polite
     fire_run_webhook(conn, today, run_changes)
+    return failures
 
 
 def run_replay(conn: sqlite3.Connection, path: Path) -> None:
@@ -546,8 +624,8 @@ def main() -> int:
     if args.replay:
         run_replay(conn, args.replay)
         return 0
-    run_live(conn)
-    return 0
+    # Non-zero exit when any target failed, so systemd/docker logs flag the run.
+    return 1 if run_live(conn) else 0
 
 
 if __name__ == "__main__":

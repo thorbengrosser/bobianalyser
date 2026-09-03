@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
   <title>Bordbistro Admin</title>
   <style>
-    :root { --accent: #06c; }
-    body { font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; color: #1c1f24; }
+    :root { --accent: #06c; color-scheme: light; }
+    body { background: #fff; font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif; max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; color: #1c1f24; }
     h1 { margin: 0 0 .25rem; font-size: 1.5rem; }
     .muted { color: #6b7280; font-size: .85rem; }
     .tabs { display: flex; gap: .25rem; margin: 1.5rem 0 1rem; border-bottom: 1px solid #e5e7eb; }
@@ -60,12 +61,20 @@
       <div class="tab active" data-tab="overview">Übersicht</div>
       <div class="tab" data-tab="changes">Änderungen</div>
       <div class="tab" data-tab="items">Items &amp; Reviews</div>
+      <div class="tab" data-tab="fetches">Abrufe</div>
       <div class="tab" data-tab="settings">Einstellungen</div>
     </div>
 
     <section id="tab-overview">
+      <p id="fetch-summary" class="muted"></p>
       <div class="stats" id="stats"></div>
       <p class="muted" id="insights"></p>
+    </section>
+
+    <section id="tab-fetches" style="display:none;">
+      <p class="muted" id="fetch-status"></p>
+      <table><thead><tr><th>Zeitpunkt (UTC)</th><th>Ziel</th><th>Status</th><th>Artikel</th><th>+ / ~ / −</th><th>Dauer</th><th>Fehler</th></tr></thead>
+        <tbody id="fetch-tbody"></tbody></table>
     </section>
 
     <section id="tab-changes" style="display:none;">
@@ -153,13 +162,40 @@ async function tryLogin() {
 function logout() { token = ""; localStorage.removeItem("bb_token"); $("#token").value = ""; $("#app").style.display = "none"; $("#logout-btn").style.display = "none"; $("#login-err").textContent = ""; }
 function showApp() {
   $("#login-err").textContent = ""; $("#app").style.display = ""; $("#logout-btn").style.display = "";
-  loadStats(); loadChanges(); loadItems(); loadSettings();
+  loadStats(); loadChanges(); loadItems(); loadFetches(); loadSettings();
 }
 
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
-  ["overview", "changes", "items", "settings"].forEach(n => $("#tab-" + n).style.display = n === t.dataset.tab ? "" : "none");
+  ["overview", "changes", "items", "fetches", "settings"].forEach(n => $("#tab-" + n).style.display = n === t.dataset.tab ? "" : "none");
 });
+
+// ---- Fetch log ----
+const fmtDate = iso => iso ? new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" }) : "–";
+async function loadFetches() {
+  const [st, log] = await Promise.all([
+    fetch(`${API}/api/status`).then(r => r.json()),
+    fetch(`${API}/api/admin/fetch-log?limit=200`, { headers: authHeaders() }).then(r => r.ok ? r.json() : []),
+  ]);
+  let summary;
+  if (!st.last_attempt) summary = "Noch kein Abruf protokolliert.";
+  else {
+    summary = `Letzter erfolgreicher Abruf: <strong>${fmtDate(st.last_success)}</strong> · letzter Versuch: ${fmtDate(st.last_attempt)}`;
+    if (st.last_run && !st.last_run.ok) {
+      summary += ` — <span style="color:#c0392b">${st.last_run.failed.length} von ${st.last_run.targets} Abfragen fehlgeschlagen</span>`;
+    } else summary += " — <span style=\"color:#1d8a4e\">OK</span>";
+  }
+  $("#fetch-summary").innerHTML = summary; $("#fetch-status").innerHTML = summary;
+  $("#fetch-tbody").innerHTML = log.map(f => `
+    <tr><td><code>${esc(f.fetched_at)}</code></td>
+      <td><span class="badge b-${f.section}">${f.section === "ic2" ? "IC/EC" : "ICE"}</span> ${esc(f.register)}</td>
+      <td><span class="badge ${f.ok ? "b-add" : "b-rem"}">${f.ok ? "OK" : "FEHLER"}</span>${f.http_status ? ` <small class="muted">${f.http_status}</small>` : ""}</td>
+      <td>${f.present ?? ""}</td>
+      <td class="muted">${f.ok ? `${f.added ?? 0} / ${f.changed ?? 0} / ${f.removed ?? 0}` : ""}</td>
+      <td class="muted">${f.duration_ms != null ? f.duration_ms + " ms" : ""}</td>
+      <td class="muted">${esc(f.error || "")}</td></tr>`).join("")
+    || `<tr><td colspan="7" class="muted">Keine Abrufe protokolliert.</td></tr>`;
+}
 
 // ---- Overview / stats ----
 async function loadStats() {

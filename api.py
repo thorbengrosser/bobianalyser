@@ -15,12 +15,13 @@ import os
 import secrets
 import sqlite3
 import time
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 import requests
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from scraper import ensure_schema  # single source of truth for migrations
 
@@ -60,15 +61,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def noindex(request: Request, call_next):
+    """Keep this host out of search engines.
+
+    The blog post that embeds the widget should rank — not the API, the preview
+    page or the admin portal. X-Robots-Tag covers every response (JSON, JS, images).
+    """
+    resp = await call_next(request)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
 # Ensure schema/migrations at startup (handles older DBs missing newer columns).
-with sqlite3.connect(DB_PATH) as _c:
+with closing(sqlite3.connect(DB_PATH)) as _c:
     ensure_schema(_c)
 
 
-def db() -> sqlite3.Connection:
+@contextmanager
+def db():
+    """Per-request connection that is committed and *closed* on exit.
+
+    sqlite3.Connection's own context manager only commits; it leaves the handle
+    open until garbage collection.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def require_admin(authorization: str = Header(default="")) -> None:
@@ -345,6 +369,8 @@ def put_settings(payload: dict):
     items = {k: v for k, v in payload.items() if k in ALLOWED_SETTINGS or k in ADMIN_SETTINGS}
     if not items:
         raise HTTPException(400, "no known settings keys")
+    if items.get("webhook_url") and _clean_url(items["webhook_url"]) is None:
+        raise HTTPException(400, "webhook_url must be an http(s) URL")
     with db() as conn:
         for k, v in items.items():
             conn.execute(
@@ -418,7 +444,7 @@ def set_review(item_id: int, payload: dict):
                  updated_at=excluded.updated_at""",
             (item_id, cur["blog_url"], cur["rating"], cur["notes"],
              cur["needs_review"], cur["hidden"],
-             dt.datetime.utcnow().isoformat(timespec="seconds")),
+             dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")),
         )
         conn.commit()
     return {"ok": True, "item_id": item_id, **cur}
@@ -439,6 +465,12 @@ def item_image(item_id: int):
     path = IMG_CACHE / f"{item_id}.jpg"
     fresh = path.exists() and (time.time() - path.stat().st_mtime) < IMG_CACHE_TTL
     if not fresh:
+        # Only proxy images for items we actually track — otherwise this is an
+        # open relay that lets anyone make the server hammer the upstream CDN.
+        with db() as conn:
+            known = conn.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone()
+        if known is None and not path.exists():
+            raise HTTPException(404, "unknown item")
         try:
             r = requests.get(
                 UPSTREAM_IMG.format(id=item_id), headers=UPSTREAM_HEADERS, timeout=15
@@ -461,9 +493,72 @@ def _img_response(path: Path) -> FileResponse:
     )
 
 
+@app.get("/api/status")
+def fetch_status():
+    """Public fetch health for the widget footer: last success + last attempt.
+
+    `last_success` is the newest successful (section, register) fetch — i.e. how
+    fresh the data is. `last_run` summarises the most recent scrape run so a
+    partially failed run is visible too.
+    """
+    with db() as conn:
+        last_ok = conn.execute(
+            "SELECT fetched_at FROM fetch_log WHERE ok=1 ORDER BY fetched_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+        last_any = conn.execute(
+            "SELECT run_id FROM fetch_log ORDER BY fetched_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+        last_run = None
+        if last_any:
+            rows = conn.execute(
+                "SELECT fetched_at, section, register, ok, error FROM fetch_log "
+                "WHERE run_id=? ORDER BY id",
+                (last_any["run_id"],),
+            ).fetchall()
+            last_run = {
+                "run_id": last_any["run_id"],
+                "finished_at": max(r["fetched_at"] for r in rows),
+                "ok": all(r["ok"] for r in rows),
+                "targets": len(rows),
+                "failed": [
+                    {"section": r["section"], "register": r["register"], "error": r["error"]}
+                    for r in rows if not r["ok"]
+                ],
+            }
+        latest_snapshot = conn.execute(
+            "SELECT MAX(snapshot_date) FROM item_versions"
+        ).fetchone()[0]
+    return {
+        "last_success": last_ok["fetched_at"] if last_ok else None,
+        "last_attempt": last_run["finished_at"] if last_run else None,
+        "last_run": last_run,
+        "latest_snapshot_date": latest_snapshot,
+    }
+
+
+@app.get("/api/admin/fetch-log", dependencies=[Depends(require_admin)])
+def fetch_log(limit: int = 200):
+    """Raw fetch attempts, newest first. Auth: error strings may quote upstream URLs."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM fetch_log ORDER BY id DESC LIMIT ?", (max(1, min(limit, 1000)),)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 @app.get("/api/admin/check", dependencies=[Depends(require_admin)])
 def admin_check():
     return {"ok": True}
+
+
+@app.get("/robots.txt")
+def robots():
+    # Deliberately *no* Disallow: crawlers must still be able to fetch pages to see
+    # the noindex signal. Blocking them would freeze already-indexed results in place.
+    return PlainTextResponse(
+        "# Indexing is refused via X-Robots-Tag: noindex on every response.\n"
+        "User-agent: *\nAllow: /\n"
+    )
 
 
 @app.get("/")
