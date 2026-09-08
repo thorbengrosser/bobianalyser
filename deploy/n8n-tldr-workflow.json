@@ -1,0 +1,156 @@
+{
+  "name": "BoBi Karte – TL;DR Post",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bobi-menu-changes-CHANGE-ME-to-a-long-random-string",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Bordbistro Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "a1b2c3d4-0001-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payload from the Bordbistro tracker:\n// { event, date, count, summary, replay?, items:[{ id, title, section, register, status, image_path, changes }] }\nconst LIMIT = 300; // Bluesky: 300 graphemes. Lower it if you add hashtags/links in a later node.\n\nconst body = $input.first().json.body || {};\nconst items = Array.isArray(body.items) ? body.items : [];\nif (body.event !== 'menu.changed' || items.length === 0) {\n  return []; // nothing to post\n}\n\n// Titles per status. Dedupe, keep order of first appearance.\nconst titles = (...statuses) => [...new Set(\n  items.filter(i => statuses.includes(i.status)).map(i => (i.title || '').trim()).filter(Boolean)\n)];\nconst neu = titles('added').concat(titles('returned').map(t => `${t} (wieder da)`));\nconst entfernt = titles('removed');\nconst geaendert = titles('changed');\n\nconst HEAD = 'Es gibt Änderungen auf der Karte des BoBi:';\nconst FOOT = 'Die detaillierte Analyse kommt Anfang nächsten Monats auf www.bobi.blog';\n\n// Grapheme count like Bluesky does (emoji/umlauts = 1). Fallback: code points.\nconst seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('de', { granularity: 'grapheme' }) : null;\nconst glen = s => seg ? [...seg.segment(s)].length : [...s].length;\n\n// Sections in display order; `shown` = how many names to print.\nconst sections = [\n  { label: 'Neu', names: neu, shown: neu.length },\n  { label: 'Entfernt', names: entfernt, shown: entfernt.length },\n  { label: 'Änderungen', names: geaendert, shown: geaendert.length },\n];\n\nfunction render() {\n  const lines = [HEAD];\n  for (const s of sections) {\n    if (!s.names.length) continue;\n    const rest = s.names.length - s.shown;\n    if (s.shown === 0) lines.push(`${s.label}: ${s.names.length} Artikel`);\n    else lines.push(`${s.label}: ${s.names.slice(0, s.shown).join(', ')}${rest ? ` +${rest} weitere` : ''}`);\n  }\n  lines.push('', FOOT);\n  return lines.join('\\n');\n}\n\nconst textFull = render();\n\n// Trim until it fits: drop names from the last section first (Änderungen → Entfernt → Neu).\nlet text = textFull;\nwhile (glen(text) > LIMIT) {\n  const s = [...sections].reverse().find(x => x.shown > 0);\n  if (!s) break; // every section already collapsed to counts\n  s.shown -= 1;\n  text = render();\n}\nif (glen(text) > LIMIT) text = [...text].slice(0, LIMIT - 1).join('') + '…'; // pathological safety net\n\nreturn [{\n  json: {\n    text,                 // fits LIMIT — post this\n    textFull,             // untruncated — for channels without a limit\n    length: glen(text),\n    truncated: text !== textFull,\n    date: body.date,\n    count: items.length,\n    replay: body.replay === true, // true when re-sent from /admin for development\n    neu, entfernt, geaendert,\n  },\n}];\n"
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "TL;DR bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c0000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.replay }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Ist Replay?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s0000000-0000-4000-8000-000000000001",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "s0000000-0000-4000-8000-000000000002",
+              "name": "date",
+              "value": "={{ $json.date }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Post (hier Posting-Node anhängen)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        800,
+        120
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Replay – nur ansehen, nicht posten",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -120
+      ]
+    }
+  ],
+  "connections": {
+    "Bordbistro Webhook": {
+      "main": [
+        [
+          {
+            "node": "TL;DR bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TL;DR bauen": {
+      "main": [
+        [
+          {
+            "node": "Ist Replay?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ist Replay?": {
+      "main": [
+        [
+          {
+            "node": "Replay – nur ansehen, nicht posten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Post (hier Posting-Node anhängen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": []
+}

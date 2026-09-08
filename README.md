@@ -108,6 +108,11 @@ senden* to re-fire that day's real changes (payload carries `"replay": true`), o
 *Payload anzeigen* to inspect the JSON without sending. Same via
 `POST /api/admin/webhook-replay?date=2026-09-04[&dry_run=1]`.
 
+**Ready-made n8n flow:** import `deploy/n8n-tldr-workflow.json`. It receives the
+webhook, builds a German TL;DR post (Neu / Entfernt / Änderungen by title) and routes
+replays to a dead end so development re-sends never publish. Attach your posting node
+after *Post*. Change the webhook path to a long random string before activating.
+
 `status` is one of `added | removed | changed | returned`. Set an optional
 **Signatur-Secret** and each request carries `X-Bordbistro-Signature: sha256=<hmac>`
 (HMAC-SHA256 of the raw body) so your flow can verify authenticity. The URL/secret
