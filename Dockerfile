@@ -13,8 +13,8 @@ COPY . .
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8765
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:8765/api/stats || exit 1
+# No HEALTHCHECK here: the image is shared by the API and the scraper sidecar, and
+# the scraper serves nothing on 8765. The API's health check lives in docker-compose.
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8765"]

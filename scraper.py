@@ -428,21 +428,65 @@ def send_webhook(url: str, payload: dict, secret: str | None = None) -> tuple[bo
         return False, None, str(e)
 
 
+def build_payload(date: str, items: list[dict], **extra: Any) -> dict:
+    """The one payload shape every webhook call uses (live run, replay, test)."""
+    summary: dict[str, int] = {}
+    for it in items:
+        summary[it["status"]] = summary.get(it["status"], 0) + 1
+    return {
+        "event": "menu.changed",
+        "date": date,
+        "count": len(items),
+        "summary": summary,
+        **extra,
+        "items": items,
+    }
+
+
+def changes_for_date(conn: sqlite3.Connection, date: str) -> list[dict]:
+    """Rebuild the change records of one day from `change_log`, same shape as a live run.
+
+    Used by the admin replay endpoint so n8n flows can be developed against real data.
+    """
+    rows = conn.execute(
+        """SELECT c.item_id, c.field, c.old_value, c.new_value, i.section, i.register,
+                  COALESCE(v.title_de, lv.title_de, '') AS title
+           FROM change_log c
+           JOIN items i ON i.id = c.item_id
+           LEFT JOIN item_versions v
+             ON v.item_id = c.item_id AND v.snapshot_date = c.changed_at
+           LEFT JOIN item_versions lv
+             ON lv.item_id = c.item_id
+            AND lv.snapshot_date = (SELECT MAX(snapshot_date) FROM item_versions
+                                    WHERE item_id = c.item_id)
+           WHERE c.changed_at = ?
+           ORDER BY c.item_id, c.id""",
+        (date,),
+    ).fetchall()
+    by_item: dict[int, dict] = {}
+    for item_id, field, old, new, section, register, title in rows:
+        rec = by_item.setdefault(item_id, {
+            "status": "changed", "title": title, "section": section,
+            "register": register, "changes": [],
+        })
+        if field in ("added", "removed", "returned"):
+            rec["status"] = field          # mirrors run-time precedence in ingest()
+            if field == "removed" and old:
+                rec["title"] = old         # removed items carry their last title here
+        else:
+            rec["changes"].append({"field": field, "old": old, "new": new})
+    return [
+        _change_record(iid, r["title"], r["section"], r["register"], r["status"], r["changes"])
+        for iid, r in by_item.items()
+    ]
+
+
 def fire_run_webhook(conn: sqlite3.Connection, date: str, items: list[dict]) -> None:
     """Fire the configured webhook with all changes from a scrape run (if any)."""
     url = get_setting(conn, "webhook_url")
     if not url or not items:
         return
-    summary: dict[str, int] = {}
-    for it in items:
-        summary[it["status"]] = summary.get(it["status"], 0) + 1
-    payload = {
-        "event": "menu.changed",
-        "date": date,
-        "count": len(items),
-        "summary": summary,
-        "items": items,
-    }
+    payload = build_payload(date, items)
     ok, status, detail = send_webhook(url, payload, get_setting(conn, "webhook_secret"))
     msg = f"[webhook] {'sent' if ok else 'FAILED'} {len(items)} change(s) → {status or detail}"
     print(msg, file=sys.stdout if ok else sys.stderr)

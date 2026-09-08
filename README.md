@@ -42,6 +42,8 @@ Open `http://127.0.0.1:8765/` for the live preview and `/admin` for the admin po
 | `POST /api/reviews/{id}` | ✓ | partial upsert: `blog_url`, `rating`, `notes`, `needs_review`, `hidden` |
 | `DELETE /api/reviews/{id}` | ✓ | remove review row |
 | `POST /api/admin/webhook-test` | ✓ | fire a sample payload at the configured webhook |
+| `POST /api/admin/webhook-replay` | ✓ | re-send the **real** changes of one day; `?date=YYYY-MM-DD` (default: latest), `?dry_run=1` returns the payload only |
+| `GET /api/admin/change-dates` | ✓ | days with change-log entries + counts (feeds the replay picker) |
 
 ## Ghost embed
 
@@ -97,6 +99,14 @@ changes, the scraper POSTs one JSON payload:
   ]
 }
 ```
+
+One request per scrape run — all changes of the run are batched into `items`. No
+request is sent when nothing changed.
+
+**Replay for development:** in `/admin` → Einstellungen pick a day and click *Erneut
+senden* to re-fire that day's real changes (payload carries `"replay": true`), or
+*Payload anzeigen* to inspect the JSON without sending. Same via
+`POST /api/admin/webhook-replay?date=2026-09-04[&dry_run=1]`.
 
 `status` is one of `added | removed | changed | returned`. Set an optional
 **Signatur-Secret** and each request carries `X-Bordbistro-Signature: sha256=<hmac>`

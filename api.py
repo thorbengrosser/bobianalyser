@@ -407,6 +407,50 @@ def webhook_test():
     return {"ok": ok, "status": status, "detail": detail}
 
 
+@app.get("/api/admin/change-dates", dependencies=[Depends(require_admin)])
+def change_dates(limit: int = 60):
+    """Days that have change-log entries, newest first — feeds the replay date picker."""
+    with db() as conn:
+        rows = conn.execute(
+            "SELECT changed_at AS date, count(*) AS count FROM change_log "
+            "GROUP BY changed_at ORDER BY changed_at DESC LIMIT ?",
+            (max(1, min(limit, 365)),),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/admin/webhook-replay", dependencies=[Depends(require_admin)])
+def webhook_replay(date: str | None = None, dry_run: int = 0):
+    """Re-send the *real* changes of one day to the configured webhook.
+
+    Payload is identical to a live run plus `"replay": true`. `?dry_run=1` returns
+    the payload without sending. `date` defaults to the most recent change day.
+    """
+    from scraper import build_payload, changes_for_date, get_setting, send_webhook
+    with db() as conn:
+        if not date:
+            date = conn.execute("SELECT MAX(changed_at) FROM change_log").fetchone()[0]
+        if not date:
+            raise HTTPException(404, "no changes logged yet")
+        try:
+            dt.date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(400, "date must be YYYY-MM-DD")
+        items = changes_for_date(conn, date)
+        url = get_setting(conn, "webhook_url")
+        secret = get_setting(conn, "webhook_secret")
+    payload = build_payload(date, items, replay=True)
+    if dry_run:
+        return {"ok": True, "sent": False, "date": date, "count": len(items), "payload": payload}
+    if not items:
+        raise HTTPException(404, f"no changes on {date}")
+    if not url:
+        raise HTTPException(400, "no webhook_url configured")
+    ok, status, detail = send_webhook(url, payload, secret)
+    return {"ok": ok, "sent": True, "date": date, "count": len(items),
+            "status": status, "detail": detail}
+
+
 @app.post("/api/reviews/{item_id}", dependencies=[Depends(require_admin)])
 def set_review(item_id: int, payload: dict):
     """Partial update — only keys present in the payload are changed."""
